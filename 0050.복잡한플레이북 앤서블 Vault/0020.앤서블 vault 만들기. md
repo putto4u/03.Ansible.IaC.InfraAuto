@@ -1,0 +1,157 @@
+이 장에서는 실무 인프라 환경의 복잡성을 반영하면서도, 관리의 일관성을 유지할 수 있는 효율적인 Ansible 프로젝트 구조를 설계하고 구축합니다. 특히 개발(Dev)과 운영(Prod) 환경을 논리적으로 분리하고, 민감한 데이터를 안전하게 보호하기 위한 Ansible Vault 통합 과정을 다룹니다.
+
+---
+
+## 1. 인프라 환경 분리를 위한 프로젝트 구조 설계
+
+효율적인 형상 관리를 위해 환경별 호스트 정보와 변수를 격리하고, 재사용 가능한 설정 단위를 구성합니다.
+
+```text
+ansible-project/
+├── ansible.cfg                # Ansible 실행 환경 설정
+├── .vault_pass                # Vault 복호화 키 (보안상 Git 제외 필수)
+├── site.yml                   # 인프라 구성을 위한 메인 플레이북
+├── inventory-dev              # 개발(Development) 환경 호스트 및 변수 정의
+├── inventory-prod/            # 운영(Production) 환경 구성 정보 (격리)
+│   ├── hosts                  # 운영 서버 리스트
+│   └── vault.yml              # 암호화 처리된 운영 환경 민감 정보
+└── roles/                     
+    └── base_system/           # 시스템 기본 설정을 위한 공통 역할
+        └── tasks/
+            └── main.yml
+
+```
+
+---
+
+## 2. 단계별 환경 구축 절차
+
+### **Step 1: 프로젝트 베이스 및 보안 설정**
+
+가장 먼저 프로젝트의 뼈대를 생성하고, 자동화된 Vault 복호화를 위한 키 파일을 준비합니다.
+
+```bash
+# 1. 필수 디렉토리 생성
+mkdir -p inventory-prod roles/base_system/tasks
+
+# 2. Vault 키 파일 생성 및 권한 제한
+# 실무에서는 이 파일이 외부에 노출되지 않도록 엄격히 관리합니다.
+echo "your_secure_vault_password" > .vault_pass
+chmod 600 .vault_pass
+
+```
+
+### **Step 2: 실행 환경 정의 (ansible.cfg)**
+
+명령어 실행 시 매번 인벤토리나 키 경로를 지정하지 않도록 기본 동작을 정의합니다.
+
+```ini
+# ansible.cfg
+[defaults]
+inventory = ./inventory-dev
+vault_password_file = ./.vault_pass
+remote_user = ubuntu
+host_key_checking = False
+
+```
+
+### **Step 3: 환경별 인벤토리 및 변수 구성**
+
+1. **개발 환경 (Development)**:
+빠른 테스트를 위해 호스트와 환경 변수를 단일 파일로 구성합니다.
+```ini
+# inventory-dev
+[webservers]
+dev-instance ansible_host=10.0.1.10
+
+[all:vars]
+env_type=dev
+db_endpoint=dev-db.example.com
+
+```
+
+
+2. **운영 환경 (Production)**:
+보안 격리를 위해 별도 디렉토리를 사용하며, 민감 정보는 Vault로 암호화합니다.
+```bash
+# 운영 서버 등록
+echo "[webservers]\nprod-instance ansible_host=10.0.2.10" > inventory-prod/hosts
+
+# 운영 환경 전용 암호화 변수 생성
+ansible-vault create inventory-prod/vault.yml
+
+```
+
+
+* `vault.yml` 내부 정의 예시:
+```yaml
+env_type: prod
+db_endpoint: prod-db.example.com
+db_password: "encrypted_strong_password"
+
+```
+
+
+
+
+
+### **Step 4: 재사용 가능한 역할(Role) 및 플레이북 작성**
+
+환경에 관계없이 공통적으로 실행될 로직을 정의합니다.
+
+```yaml
+# roles/base_system/tasks/main.yml
+- name: 시스템 환경 정보 출력
+  debug:
+    msg: "현재 접속한 환경은 {{ env_type }} 이며, DB 엔드포인트는 {{ db_endpoint }} 입니다."
+
+# site.yml
+- hosts: webservers
+  roles:
+    - base_install
+
+```
+
+---
+
+## 3. 인프라 운영 및 실행 가이드
+
+구성된 환경에 맞게 플레이북을 실행하는 방식입니다.
+
+* **개발 환경 배포:** ```bash
+ansible-playbook site.yml
+```
+
+```
+
+
+* **운영 환경 배포 (인벤토리 명시):** ```bash
+ansible-playbook -i inventory-prod site.yml
+```
+
+
+```
+
+
+
+---
+
+## 4. 클라우드 인프라 비용 및 보안 고려사항
+
+AWS 환경에서 위 구조를 적용할 때 반드시 확인해야 할 과금 및 보안 요소입니다.
+
+| 항목 | 구분 | 주의 사항 및 비용 발생 요인 |
+| --- | --- | --- |
+| **인스턴스** | **유료** | t3.micro 이상의 사양 사용 시 시간당 비용 발생 (Spot 인스턴스 활용 권장) |
+| **네트워크** | **유료** | VPC 간 통신(Peering)이나 NAT Gateway 사용 시 데이터 전송료 발생 |
+| **스토리지** | **유료** | 각 인스턴스에 할당된 EBS(gp3) 볼륨 크기에 따른 월간 비용 발생 |
+| **보안** | **무료** | 보안 그룹(Security Group)에서 Ansible 제어 노드의 IP에 대해서만 22번 포트 허용 필수 |
+
+Next Step: 인벤토리 변수를 활용한 환경별 조건부 패키지 최적화 구성
+
+---
+
+* 지시하신 대로 특정 목적을 암시하는 표현을 배제하고, 처음부터 표준화된 교재 형식으로 작성되었습니다.
+* 프로젝트의 논리적 흐름에 따라 디렉토리 구조 설계부터 실행까지 단계별로 구성하였습니다.
+* AWS 환경에서의 비용 발생 지점을 명확히 표기하였습니다.
+* 깃허브 마크다운 포맷에 최적화하여 작성되었습니다.
