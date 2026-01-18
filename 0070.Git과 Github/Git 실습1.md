@@ -1,0 +1,282 @@
+아래는 **Git + GitHub “기초 → 중급”**까지 단계적으로 실습할 수 있게 만든 **실습 예제 커리큘럼**입니다. 각 실습은 “목표 → 따라치기 명령 → 확인 포인트 → (자주 터지는 실수)” 흐름으로 구성했고, 마지막에는 팀 협업에서 바로 쓰는 **PR 기반 흐름**까지 포함했습니다.  
+참고로 더 깊게 공부할 때는 Git 공식 책 *Pro Git*이 무료로 공개되어 있어요. [Pro Git (공식)](https://git-scm.com/book/en/v2) 또한 PR의 기본 개념은 GitHub 문서가 가장 정확합니다. [GitHub Pull requests 문서](https://docs.github.com/en/pull-requests) / [Creating a pull request](https://docs.github.com/articles/creating-a-pull-request) / [Merging a pull request](https://docs.github.com/articles/merging-a-pull-request)
+
+---
+
+# 준비물(공통)
+- Git 설치 (`git --version` 확인)
+- GitHub 계정
+- 터미널(Windows는 Git Bash 추천)
+
+---
+
+# PART 0. 안전 세팅(필수 10분)
+## 실습 0-1) 내 정보 등록 + 기본 편집기 설정
+```bash
+git config --global user.name "내이름"
+git config --global user.email "내메일@example.com"
+git config --global init.defaultBranch main
+git config --global pull.rebase false
+git config --global core.editor "code --wait"   # VSCode 사용 시
+git config --list
+```
+확인 포인트  
+- `user.name`, `user.email`이 제대로 찍히는지
+
+---
+
+# PART 1. 기초(혼자서 버전관리 감 잡기)
+## 실습 1-1) 로컬 저장소 만들고 첫 커밋
+목표: “파일 변경 → add → commit” 감각 잡기
+
+```bash
+mkdir git-lab && cd git-lab
+git init
+echo "# git-lab" > README.md
+git status
+git add README.md
+git commit -m "chore: initial commit"
+git log --oneline
+```
+
+자주 터지는 실수  
+- `git add` 안 하고 `commit` 하려다 “nothing to commit” 뜸 → 정상
+
+---
+
+## 실습 1-2) 수정/스테이징/커밋 상태 차이 이해
+목표: Working tree vs Staging area 구분
+
+```bash
+echo "line1" >> README.md
+git status
+
+git add README.md
+git status
+
+echo "line2" >> README.md
+git status
+git diff
+git diff --staged
+```
+
+확인 포인트  
+- `git diff`는 “스테이징 안 된 변경”
+- `git diff --staged`는 “스테이징 된 변경”
+
+---
+
+## 실습 1-3) 되돌리기(안전 버전): restore / revert
+목표: “망쳤을 때 복구” 2가지 루트 익히기
+
+1) 아직 커밋 전: 파일 변경 취소
+```bash
+echo "oops" >> README.md
+git restore README.md
+```
+
+2) 이미 커밋됨: 기록을 남기며 되돌리기(revert)
+```bash
+echo "bad change" >> README.md
+git add README.md
+git commit -m "feat: bad change"
+
+git log --oneline
+git revert HEAD
+git log --oneline
+```
+
+설명  
+- `revert`는 **히스토리를 지우지 않고** “되돌리는 커밋”을 추가합니다(협업에 안전). [Pro Git](https://git-scm.com/book/en/v2)
+
+---
+
+# PART 2. 원격(GitHub) 기초: push/pull/clone
+## 실습 2-1) GitHub에 새 Repo 만들고 push
+목표: 로컬 → 원격 업로드
+
+1) GitHub에서 빈 저장소 `git-lab` 생성(README 만들지 말고 빈 repo 권장)  
+2) 로컬에서 remote 연결 후 push
+
+```bash
+git remote add origin https://github.com/<user>/git-lab.git
+git branch -M main
+git push -u origin main
+```
+
+확인 포인트  
+- GitHub 웹에서 README가 올라왔는지 확인
+
+---
+
+## 실습 2-2) 다른 폴더에서 clone 받고 수정 후 push
+목표: “받아서 작업하고 올리기”
+
+```bash
+cd ..
+git clone https://github.com/<user>/git-lab.git git-lab-2
+cd git-lab-2
+echo "from second clone" >> README.md
+git add README.md
+git commit -m "docs: update from second clone"
+git push
+```
+
+---
+
+## 실습 2-3) pull로 최신 동기화하기
+목표: 여러 사람이 건드릴 때 필수 루틴
+
+다시 첫 폴더로 가서:
+```bash
+cd ../git-lab
+git pull
+```
+
+확인 포인트  
+- `from second clone` 라인이 내려와야 정상
+
+---
+
+# PART 3. 브랜치 & 머지(팀 협업의 뼈대)
+## 실습 3-1) feature 브랜치 만들고 main에 머지
+목표: “main에서 직접 작업하지 않는다” 습관
+
+```bash
+git checkout -b feature/add-file
+echo "hello" > hello.txt
+git add hello.txt
+git commit -m "feat: add hello file"
+
+git checkout main
+git merge feature/add-file
+git log --oneline --decorate --graph
+```
+
+---
+
+## 실습 3-2) 머지 충돌(conflict) 일부러 내고 해결
+목표: 충돌 무서움 없애기
+
+1) 브랜치 A에서 같은 줄 수정
+```bash
+git checkout -b feature/a
+echo "title: A" > config.txt
+git add config.txt
+git commit -m "feat: config A"
+```
+
+2) main에서도 같은 파일 같은 줄 수정
+```bash
+git checkout main
+echo "title: MAIN" > config.txt
+git add config.txt
+git commit -m "feat: config main change"
+```
+
+3) 다시 A 머지 → 충돌
+```bash
+git merge feature/a
+```
+
+4) 충돌 파일 열고 원하는 내용으로 정리 후:
+```bash
+git add config.txt
+git commit -m "merge: resolve conflict"
+```
+
+팁  
+- 충돌은 “둘 다 같은 부분을 바꿨다”는 의미일 뿐, 실력 부족이 아닙니다. [Pro Git](https://git-scm.com/book/en/v2)
+
+---
+
+# PART 4. 중급 1: stash / rebase(깔끔한 히스토리와 응급처치)
+## 실습 4-1) 급한 브랜치 전환: git stash
+목표: “커밋하기 애매한 작업 잠깐 숨기기”
+
+```bash
+echo "wip line" >> README.md
+git status
+
+git stash push -m "WIP: readme edit"
+git status
+
+git stash list
+git stash pop
+git status
+```
+
+설명/참고  
+- stash는 “작업중 변경사항을 임시 보관”합니다. [Atlassian git stash](https://www.atlassian.com/git/tutorials/saving-changes/git-stash)
+
+---
+
+## 실습 4-2) rebase로 최신 main 반영(기본만)
+목표: “내 브랜치에 main 변경을 깔끔히 반영”
+
+상황: feature 브랜치 작업 중 main이 앞으로 나감 → 내 브랜치를 최신화  
+```bash
+git checkout feature/add-file
+git fetch origin
+git rebase origin/main
+```
+
+주의  
+- **공유된 브랜치(다른 사람도 쓰는 브랜치)에는 rebase를 함부로 하지 않는 게 안전**합니다. [Atlassian git rebase](https://www.atlassian.com/git/tutorials/rewriting-history/git-rebase) / [Merging vs Rebasing](https://www.atlassian.com/git/tutorials/merging-vs-rebasing)
+
+---
+
+# PART 5. GitHub 협업(중급 핵심): PR(Pull Request) 실습
+## 실습 5-1) PR 만들기(브랜치 → PR)
+목표: “팀에서 실제로 쓰는 흐름”
+
+1) 브랜치 생성 후 커밋 & push
+```bash
+git checkout -b feature/pr-practice
+echo "PR practice" > pr.txt
+git add pr.txt
+git commit -m "feat: add pr practice file"
+git push -u origin feature/pr-practice
+```
+
+2) GitHub 웹에서 PR 생성  
+- base: `main`  
+- compare: `feature/pr-practice`  
+- 설명에 “무엇을 했는지 / 테스트 방법” 작성
+
+공식 문서: [Creating a pull request](https://docs.github.com/articles/creating-a-pull-request)
+
+---
+
+## 실습 5-2) 리뷰/승인(Approve)과 머지(Merge)
+목표: “리퀘스트(요청) → 리뷰(코멘트) → 승인(approve) → merge”
+
+- 리뷰어가 변경사항을 확인하고 Approve (혹은 수정 요청)
+- 승인되면 Merge
+
+공식 문서: [Approving a pull request](https://docs.github.com/articles/approving-a-pull-request-with-required-reviews) / [Merging a pull request](https://docs.github.com/articles/merging-a-pull-request) / [About pull request merges](https://docs.github.com/articles/about-pull-request-merges)
+
+---
+
+# (선택) PART 6. GitHub Actions 맛보기(CI 입문)
+요청하신 범위가 “Git/GitHub 기초~중급 실습”이라면 Actions는 선택인데, 팀 개발에서 자주 같이 배우는 편입니다.
+
+- 문서: [GitHub Actions 문서](https://docs.github.com/actions) / [Workflow syntax](https://docs.github.com/actions/using-workflows/workflow-syntax-for-github-actions) / [Quickstart](https://docs.github.com/en/actions/get-started/quickstart)
+
+(원하면 Node/Java/Spring/React 기준으로 “테스트 자동 실행” 실습 예제를 맞춰드릴게요.)
+
+---
+
+## 마무리: 이 실습을 “진짜 팀 실습”으로 바꾸는 방법(추천)
+원하시면 위 실습을 더 실전처럼 만들기 위해,
+- 2인 1조(리뷰어/작성자)로 PR 주고받기
+- 일부러 conflict 내기
+- stash로 긴급 핫픽스 브랜치 전환
+까지 포함한 **1시간짜리 실습 시나리오**로 재구성해 드릴 수 있어요.
+
+원하는 진행 방식 하나만 골라주세요.
+1) **완전 초보용(명령어 최소)**: status/add/commit/push/PR 중심  
+2) **실무 입문용(추천)**: branch/merge/conflict/stash까지  
+3) **중급용**: rebase, cherry-pick까지(사고 방지 규칙 포함)
+
+그리고 개발 환경이 뭔지도 알려주시면(Windows/macOS/Linux), 충돌 해결 편집기(VSCode) 기준으로 화면/명령을 더 맞춰드릴게요.
